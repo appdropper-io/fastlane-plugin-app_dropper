@@ -108,6 +108,16 @@ app_dropper(
 
 Both block the lane until the build is processed and both return a link. App Dropper additionally groups builds into an app with full version history, notifies your registered testers by email and push, and keeps builds for 7 days on free or 30 on Pro (indefinitely if you pin one).
 
+## What your testers are told
+
+A successful upload emails and push-notifies everyone on the app with *"A new
+version is available for {your app}"* — the account the token belongs to
+included, since nobody watched the lane run. Running inside CI, the plugin
+reads the runner's environment (GitHub Actions, GitLab CI, Bitrise, CircleCI,
+Bitbucket Pipelines, Codemagic, Jenkins and friends) so that email can name the
+branch and commit and link back to the build. Set `APPDROPPER_NO_CI_INFO=1` to
+leave those details out.
+
 ## How it works
 
 The binary never passes through the API. The action reserves an upload (which is where every plan limit and quota is applied), streams the file straight to Google Cloud Storage, then waits for the server to parse it. That's what keeps a 500 MB `.ipa` clear of the request-size ceilings every HTTP API has.

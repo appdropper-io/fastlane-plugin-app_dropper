@@ -25,12 +25,117 @@ module Fastlane
       end
 
       def create_upload(file_name:, file_size:, release_notes:, tag:)
-        post('/uploads', {
+        body = {
           file_name: file_name,
           file_size: file_size,
           release_notes: release_notes.to_s,
           tag: tag.to_s
-        })
+        }
+        ci = self.class.ci_info
+        body[:ci] = ci unless ci.empty?
+        post('/uploads', body)
+      end
+
+      # Which pipeline this lane is running in, read off the runner's
+      # environment. App Dropper quotes it back in the "a new version is
+      # available" email its testers and managers get, so they can see the
+      # branch and commit the build in their hands came from. Empty on a
+      # developer's machine, and suppressed entirely by APPDROPPER_NO_CI_INFO.
+      def self.ci_info
+        return {} if present(ENV['APPDROPPER_NO_CI_INFO'])
+
+        info =
+          if present(ENV['GITHUB_ACTIONS'])
+            repo = ENV['GITHUB_REPOSITORY']
+            run = ENV['GITHUB_RUN_ID']
+            server = present(ENV['GITHUB_SERVER_URL']) || 'https://github.com'
+            {
+              provider: 'GitHub Actions',
+              repo: repo,
+              branch: branch_name(ENV['GITHUB_HEAD_REF'] || ENV['GITHUB_REF_NAME'] || ENV['GITHUB_REF']),
+              commit: ENV['GITHUB_SHA'],
+              actor: ENV['GITHUB_ACTOR'],
+              run_url: repo && run ? "#{server}/#{repo}/actions/runs/#{run}" : nil
+            }
+          elsif present(ENV['GITLAB_CI'])
+            {
+              provider: 'GitLab CI',
+              repo: ENV['CI_PROJECT_PATH'],
+              branch: ENV['CI_COMMIT_BRANCH'] || ENV['CI_COMMIT_REF_NAME'],
+              commit: ENV['CI_COMMIT_SHA'],
+              actor: ENV['GITLAB_USER_LOGIN'],
+              run_url: ENV['CI_JOB_URL'] || ENV['CI_PIPELINE_URL']
+            }
+          elsif present(ENV['BITRISE_IO'])
+            {
+              provider: 'Bitrise',
+              repo: repo_slug(ENV['GIT_REPOSITORY_URL']) || ENV['BITRISE_APP_TITLE'],
+              branch: ENV['BITRISE_GIT_BRANCH'],
+              commit: ENV['BITRISE_GIT_COMMIT'],
+              run_url: ENV['BITRISE_BUILD_URL']
+            }
+          elsif present(ENV['CIRCLECI'])
+            owner = ENV['CIRCLE_PROJECT_USERNAME']
+            name = ENV['CIRCLE_PROJECT_REPONAME']
+            {
+              provider: 'CircleCI',
+              repo: owner && name ? "#{owner}/#{name}" : name,
+              branch: ENV['CIRCLE_BRANCH'],
+              commit: ENV['CIRCLE_SHA1'],
+              actor: ENV['CIRCLE_USERNAME'],
+              run_url: ENV['CIRCLE_BUILD_URL']
+            }
+          elsif present(ENV['BITBUCKET_BUILD_NUMBER'])
+            repo = ENV['BITBUCKET_REPO_FULL_NAME']
+            build = ENV['BITBUCKET_BUILD_NUMBER']
+            {
+              provider: 'Bitbucket Pipelines',
+              repo: repo,
+              branch: ENV['BITBUCKET_BRANCH'],
+              commit: ENV['BITBUCKET_COMMIT'],
+              run_url: repo && build ? "https://bitbucket.org/#{repo}/pipelines/results/#{build}" : nil
+            }
+          elsif present(ENV['CM_BUILD_ID'])
+            {
+              provider: 'Codemagic',
+              repo: ENV['CM_REPO_SLUG'] || ENV['FCI_REPO_SLUG'],
+              branch: ENV['CM_BRANCH'] || ENV['FCI_BRANCH'],
+              commit: ENV['CM_COMMIT'] || ENV['FCI_COMMIT'],
+              run_url: ENV['CM_BUILD_URL'] || ENV['FCI_BUILD_URL']
+            }
+          elsif present(ENV['JENKINS_URL'])
+            {
+              provider: 'Jenkins',
+              repo: repo_slug(ENV['GIT_URL']) || ENV['JOB_NAME'],
+              branch: branch_name(ENV['BRANCH_NAME'] || ENV['GIT_BRANCH']),
+              commit: ENV['GIT_COMMIT'],
+              run_url: ENV['BUILD_URL']
+            }
+          elsif present(ENV['CI'])
+            { provider: 'CI' }
+          else
+            {}
+          end
+
+        info.reject { |_k, v| present(v).nil? }
+      end
+
+      def self.present(value)
+        return nil if value.nil?
+
+        stripped = value.to_s.strip
+        stripped.empty? ? nil : stripped
+      end
+
+      # "refs/heads/main" -> "main", and Jenkins' "origin/main" -> "main".
+      def self.branch_name(ref)
+        present(ref)&.sub(%r{\Arefs/(heads|tags)/}, '')&.sub(%r{\Aorigin/}, '')
+      end
+
+      # "git@github.com:acme/app.git" -> "acme/app"
+      def self.repo_slug(url)
+        match = present(url)&.match(%r{[:/]([^/:]+/[^/]+?)(?:\.git)?/?\z})
+        match && match[1]
       end
 
       # A single PUT of the whole file. Net::HTTP streams from the IO rather
