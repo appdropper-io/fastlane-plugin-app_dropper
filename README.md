@@ -16,7 +16,7 @@ Generate an API token under **Settings → API tokens** in your App Dropper dash
 export APPDROPPER_TOKEN="adp_…"
 ```
 
-Each token is scoped to a single app and carries one scope, `upload:builds` — it cannot delete builds, manage testers, read billing, or reach another app.
+A token covers either all your apps (the default, including new ones: the first upload of a new bundle ID creates its app) or only the apps you pick. Either way it carries one scope, `upload:builds` — it cannot delete builds, manage testers or read billing.
 
 ## Usage
 
