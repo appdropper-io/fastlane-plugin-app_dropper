@@ -33,4 +33,29 @@ describe Fastlane::Actions::AppDropperAction do
       end
     end
   end
+
+  describe 'plan limit messages' do
+    helper = Fastlane::Helper::AppDropperHelper
+
+    it 'puts the upgrade link on its own line, without repeating the sentence' do
+      text = helper.plan_limit_message(
+        'message' => "You've used 1 GB of your 1 GB storage. Upgrade to Pro at https://appdropper.io/pricing",
+        'upgrade' => { 'upgrade_to' => 'pro', 'upgrade_url' => 'https://appdropper.io/pricing' }
+      )
+      expect(text).to eq("You've used 1 GB of your 1 GB storage.\nUpgrade to Pro: https://appdropper.io/pricing")
+    end
+
+    it 'points Studio at support' do
+      text = helper.plan_limit_message(
+        'message' => 'Too big. Contact support@appdropper.io to raise this limit.',
+        'upgrade' => { 'upgrade_to' => nil, 'upgrade_url' => 'mailto:support@appdropper.io' }
+      )
+      expect(text).to eq('Too big. Contact support@appdropper.io to raise this limit.')
+    end
+
+    it 'leaves an older server message alone' do
+      expect(helper.plan_limit_message('message' => 'Too big. Upgrade to Pro at https://appdropper.io/pricing'))
+        .to eq('Too big. Upgrade to Pro at https://appdropper.io/pricing')
+    end
+  end
 end
