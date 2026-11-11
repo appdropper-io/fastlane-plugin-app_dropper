@@ -42,7 +42,8 @@ module Fastlane
         result = helper.await_upload(ticket['upload_id'], timeout: params[:timeout])
 
         if result['status'] == 'error'
-          UI.user_error!("App Dropper: #{result.dig('error', 'message') || 'the build could not be processed.'}")
+          message = Helper::AppDropperHelper.plan_limit_message(result['error'])
+          UI.user_error!("App Dropper: #{message.empty? ? 'the build could not be processed.' : message}")
         end
         unless result['status'] == 'ready'
           UI.user_error!("App Dropper: the build is still processing after #{params[:timeout]}s. Nothing was lost — check your dashboard.")

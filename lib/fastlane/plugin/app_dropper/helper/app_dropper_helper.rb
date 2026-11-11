@@ -19,6 +19,24 @@ module Fastlane
       # enough that a wedged lane eventually fails instead of hanging a CI job.
       DEFAULT_TIMEOUT = 600
 
+      # A plan-limit error with the upgrade path on its own line, so it stands
+      # out in a lane's log: "Upgrade to Pro: https://appdropper.io/pricing".
+      # Reads the API's `upgrade` block; without one (an older server) the
+      # message already says where to upgrade, and is returned unchanged.
+      def self.plan_limit_message(error)
+        error = {} unless error.is_a?(Hash)
+        message = error['message'].to_s
+        upgrade = error['upgrade']
+        return message unless upgrade.is_a?(Hash) && !upgrade['upgrade_url'].to_s.empty?
+
+        reason = message.sub(/\s*(Upgrade to (Pro|Studio)\b|Contact support@).*\z/m, '').strip
+        if upgrade['upgrade_to'].to_s.empty?
+          "#{reason} Contact #{upgrade['upgrade_url'].sub(/\Amailto:/, '')} to raise this limit."
+        else
+          "#{reason}\nUpgrade to #{upgrade['upgrade_to'].capitalize}: #{upgrade['upgrade_url']}"
+        end
+      end
+
       def initialize(api_token:, api_url: nil)
         @api_token = api_token
         @api_url = (api_url || ENV['APPDROPPER_API_URL'] || DEFAULT_API_URL).chomp('/')
@@ -220,15 +238,20 @@ module Fastlane
         return parsed if response.is_a?(Net::HTTPSuccess)
 
         message = parsed.dig('error', 'message') || "HTTP #{response.code}"
+        error = parsed['error'].is_a?(Hash) ? parsed['error'] : {}
+        error_with_message = error.merge('message' => message)
         # The API answers 401/403 for a token problem; naming it here saves the
         # usual round of "is the secret even set?" debugging.
         case response.code.to_i
         when 401, 403
           UI.user_error!("App Dropper: #{message} Check that APPDROPPER_TOKEN is set and scoped to this app.")
         when 402
-          UI.user_error!("App Dropper: #{message}")
+          # A plan limit: retrying won't help, so say where to upgrade.
+          UI.user_error!("App Dropper: #{self.class.plan_limit_message(error_with_message)}")
         when 429
-          UI.user_error!("App Dropper: #{message}")
+          # Rate limits clear on their own; the hourly upload cap also says
+          # where to upgrade.
+          UI.user_error!("App Dropper: #{self.class.plan_limit_message(error_with_message)}")
         else
           UI.user_error!("App Dropper: #{message}")
         end
